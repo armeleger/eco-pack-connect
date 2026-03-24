@@ -1,2 +1,2 @@
-# eco-park-connect
-Eco Park Connect is a 3-tier B2B marketplace and supply chain management platform engineered to solve the logistics and waste crisis in Rwanda’s agricultural sector.
+# eco-pack-connect
+Eco Pack Connect is a 3-tier B2B marketplace and supply chain management platform engineered to solve the logistics and waste crisis in Rwanda’s agricultural sector.
