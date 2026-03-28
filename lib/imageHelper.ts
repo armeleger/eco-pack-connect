@@ -63,7 +63,6 @@ const KEYWORD_IMAGE_MAP: [string, string][] = [
   ["print",        "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80"],
 ];
 
-/** Absolute fallback — eco/green packaging shelf */
 const DEFAULT_FALLBACK =
   "https://images.unsplash.com/photo-1530968831187-a937baadb39b?w=800&q=80";
 
@@ -73,22 +72,19 @@ const DEFAULT_FALLBACK =
  * Returns the best available image for a product.
  * Priority: stored URL → keyword match → default fallback.
  *
- * @param imageUrl - Stored image URL (may be null/empty)
- * @param title    - Product title for keyword extraction
- * @param tags     - Product tags for additional keyword matching
+ * @param imageUrl 
+ * @param title    
+ * @param tags     
  */
 export function getProductImage(
   imageUrl: string | null | undefined,
   title: string,
   tags: string[] = []
 ): string {
-  // Use stored URL if available and non-empty
   if (imageUrl && imageUrl.trim().length > 0) return imageUrl;
 
-  // Build searchable text from title and tags
   const search = [title, ...tags].join(" ").toLowerCase();
 
-  // Find first matching keyword
   for (const [keyword, url] of KEYWORD_IMAGE_MAP) {
     if (search.includes(keyword)) return url;
   }
