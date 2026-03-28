@@ -1,81 +1,240 @@
+// app/login/page.tsx
+// ============================================================
+// LOGIN PAGE
+//
+// Handles:
+//   - Email/password auth via Supabase
+//   - Role-aware redirect after login
+//   - URL param ?redirect= for post-auth navigation
+//   - ?role=supplier shows supplier-specific messaging
+//   - ?error= shows access denial messages
+//   - No emoji characters
+// ============================================================
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { supabase } from "../lib/supabase";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Leaf, LogIn, Eye, EyeOff, AlertCircle,
+  ArrowRight, ShieldCheck, LayoutDashboard, ShoppingBag
+} from "lucide-react";
+import { signIn } from "@/lib/auth";
 
-export default function Login() {
-  const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
+function LoginContent() {
+  const router       = useRouter();
+  const searchParams = useSearchParams();
 
-  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+  const redirectTo  = searchParams.get("redirect") || null;
+  const roleHint    = searchParams.get("role") as "buyer"|"supplier"|"admin"|null;
+  const accessError = searchParams.get("error");
+
+  const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw,   setShowPw]   = useState(false);
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState<string | null>(null);
+
+  // Show access error from middleware redirect
+  useEffect(() => {
+    if (accessError === "supplier_only") {
+      setError("The Seller Dashboard is only accessible to registered suppliers. Please sign in with a supplier account.");
+    } else if (accessError === "admin_only") {
+      setError("The Admin Panel requires administrator credentials.");
+    }
+  }, [accessError]);
+
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    setIsLoading(true);
-    setError("");
+    setLoading(true);
+    setError(null);
 
-    const formData = new FormData(e.currentTarget);
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
+    const { user, profile, error: authError } = await signIn(email, password);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    if (authError || !user) {
+      setError(authError || "Login failed. Please try again.");
+      setLoading(false);
+      return;
+    }
 
-    setIsLoading(false);
-
-    if (error) {
-      setError("Invalid credentials. Please check your email and password.");
-    } else if (data.user) {
-      // Check the role they selected during signup
-      const role = data.user.user_metadata?.user_role;
-      
-      if (role === "seller") {
-        router.push("/seller-dashboard");
-      } else {
-        router.push("/dashboard");
+    // Navigate based on redirect param or user role
+    if (redirectTo) {
+      router.push(redirectTo);
+    } else {
+      switch (profile?.role) {
+        case "admin":    router.push("/admin"); break;
+        case "supplier": router.push("/seller-dashboard"); break;
+        default:         router.push("/");
       }
     }
+    router.refresh();
+  }
+
+  const roleMessages: Record<string, { icon: React.ReactNode; title: string; desc: string }> = {
+    supplier: {
+      icon:  <LayoutDashboard size={16} className="text-[#2D6A4F]" />,
+      title: "Supplier Sign In",
+      desc:  "Sign in with your supplier account to access the Seller Dashboard.",
+    },
+    admin: {
+      icon:  <ShieldCheck size={16} className="text-[#2D6A4F]" />,
+      title: "Admin Sign In",
+      desc:  "Administrator access only. Contact support if you need access.",
+    },
+    buyer: {
+      icon:  <ShoppingBag size={16} className="text-[#2D6A4F]" />,
+      title: "Sign in to continue",
+      desc:  "You need an account to place a trade order.",
+    },
   };
 
+  const roleMsg = roleHint ? roleMessages[roleHint] : null;
+
   return (
-    <div className="min-h-screen bg-stone-50 flex items-center justify-center font-sans p-4 relative overflow-hidden">
-      <div className="absolute bottom-[-10%] left-[-5%] w-[500px] h-[500px] rounded-full bg-orange-100/50 blur-[80px] -z-10"></div>
-      
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-sm border border-stone-200 p-8 md:p-10 relative z-10">
-        <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center justify-center w-12 h-12 bg-amber-600 rounded-xl shadow-md text-white font-black text-2xl mb-6">E</Link>
-          <h2 className="text-2xl font-extrabold text-stone-900 tracking-tight">Welcome Back</h2>
-          <p className="text-stone-500 font-medium mt-1">Access your B2B dashboard.</p>
-        </div>
+    <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md animate-slide-up">
+        <div className="bg-white rounded-3xl border border-stone-200 shadow-xl p-8">
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm font-bold text-center">
-            {error}
+          {/* Logo */}
+          <Link href="/" className="flex items-center gap-2 mb-8 w-fit">
+            <div className="w-10 h-10 bg-[#2D6A4F] rounded-xl flex items-center justify-center">
+              <Leaf size={20} className="text-white" />
+            </div>
+            <span className="font-bold text-xl text-stone-900" style={{fontFamily:"var(--font-display)"}}>
+              Eco<span className="text-[#2D6A4F]">Pack</span>
+            </span>
+          </Link>
+
+          <h1 className="text-2xl font-bold text-stone-900 mb-1" style={{fontFamily:"var(--font-display)"}}>
+            {roleMsg?.title || "Welcome back"}
+          </h1>
+          <p className="text-sm text-stone-500 mb-6">
+            {roleMsg?.desc || "Sign in to your EcoPack account"}
+          </p>
+
+          {/* Role context banner */}
+          {roleMsg && (
+            <div className="flex items-center gap-2 bg-[#D8F3DC] border border-[#2D6A4F]/20 px-4 py-3 rounded-xl mb-5 text-sm text-[#1B4332]">
+              {roleMsg.icon}
+              <span className="font-medium">{roleMsg.desc}</span>
+            </div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl mb-5">
+              <AlertCircle size={15} className="flex-shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-1.5">
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+                placeholder="you@company.com"
+                className="w-full px-4 py-3 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-1.5">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showPw ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  placeholder="Enter your password"
+                  className="w-full px-4 py-3 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] transition-all pr-11"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw(!showPw)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition-colors"
+                >
+                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Link href="#" className="text-xs text-[#2D6A4F] hover:underline">
+                Forgot password?
+              </Link>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-[#2D6A4F] hover:bg-[#1B4332] disabled:bg-stone-300 text-white font-bold py-3.5 rounded-xl transition-colors"
+            >
+              {loading ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <><LogIn size={16} /> Sign In</>
+              )}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 my-6">
+            <div className="flex-1 h-px bg-stone-200" />
+            <span className="text-xs text-stone-400 font-medium">NO ACCOUNT YET?</span>
+            <div className="flex-1 h-px bg-stone-200" />
           </div>
-        )}
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1.5">Work Email</label>
-            <input type="email" name="email" required className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium text-stone-900" placeholder="admin@company.com" />
+          {/* Sign up options */}
+          <div className="grid grid-cols-2 gap-3">
+            <Link href="/signup?role=buyer"
+              className="flex flex-col items-center gap-1.5 px-3 py-4 rounded-xl border border-stone-200 hover:border-[#2D6A4F] hover:bg-[#D8F3DC] transition-all group"
+            >
+              <ShoppingBag size={20} className="text-stone-400 group-hover:text-[#2D6A4F]" />
+              <span className="text-xs font-semibold text-stone-500 group-hover:text-[#1B4332] text-center">
+                Join as Buyer
+              </span>
+            </Link>
+            <Link href="/signup?role=supplier"
+              className="flex flex-col items-center gap-1.5 px-3 py-4 rounded-xl border border-stone-200 hover:border-[#2D6A4F] hover:bg-[#D8F3DC] transition-all group"
+            >
+              <LayoutDashboard size={20} className="text-stone-400 group-hover:text-[#2D6A4F]" />
+              <span className="text-xs font-semibold text-stone-500 group-hover:text-[#1B4332] text-center">
+                Join as Supplier
+              </span>
+            </Link>
           </div>
-          <div>
-            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1.5">Password</label>
-            <input type="password" name="password" required className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium text-stone-900" placeholder="••••••••" />
-          </div>
 
-          <button type="submit" disabled={isLoading} className="w-full mt-6 bg-stone-900 text-white font-bold py-4 rounded-xl hover:bg-stone-800 transition-all shadow-md disabled:bg-stone-300">
-            {isLoading ? "Authenticating..." : "Sign In"}
-          </button>
-        </form>
-
-        <div className="mt-8 text-center text-sm font-medium text-stone-500">
-          New to the network? <Link href="/signup" className="text-amber-600 font-bold hover:underline">Apply for an account</Link>
+          <p className="text-center text-sm text-stone-500 mt-6">
+            Already have an account?{" "}
+            <Link href="/login" className="text-[#2D6A4F] font-semibold hover:underline">
+              Sign in <ArrowRight size={12} className="inline" />
+            </Link>
+          </p>
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[#2D6A4F] border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   );
 }

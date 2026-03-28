@@ -1,36 +1,136 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# EcoPack — B2B Sustainable Packaging Marketplace
 
-## Getting Started
+Africa's premier B2B marketplace connecting businesses that need eco-friendly, compostable, and recycled packaging with verified African manufacturers and suppliers.
 
-First, run the development server:
+## Problem Statement
+Businesses across Africa struggle to source sustainable, locally manufactured packaging at competitive wholesale prices. The supply chain is fragmented, unverified, and opaque — making cross-border eco-packaging trade difficult and costly.
 
+## Solution
+EcoPack is a full-stack B2B marketplace platform that:
+- Lists verified eco-packaging suppliers across Africa
+- Enables bulk ordering with real-time volume discounts
+- Provides a dedicated seller dashboard for manufacturers
+- Includes an admin portal for platform management
+
+## Actors
+| Role | Access |
+|------|--------|
+| **Buyer** | Browse marketplace, view products, place trade orders |
+| **Supplier** | Seller dashboard, list products, manage inventory |
+| **Admin** | Platform overview, order management, user management |
+
+---
+
+## Tech Stack
+- **Frontend**: Next.js 15 (App Router) + TypeScript
+- **Styling**: Tailwind CSS + Google Fonts (DM Serif Display + DM Sans)
+- **Backend**: Supabase (PostgreSQL, Auth, Row Level Security)
+- **Icons**: Lucide React
+- **Deployment**: Vercel
+
+---
+
+## Setup Instructions
+
+### 1. Prerequisites
+- Node.js 18+ installed
+- A Supabase account (free at supabase.com)
+- A Vercel account (free at vercel.com)
+
+### 2. Clone the Repository
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/YOUR_USERNAME/ecopack.git
+cd ecopack
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. Install Dependencies
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 4. Set Up Supabase
+1. Go to [supabase.com](https://supabase.com) → Create a new project
+2. Go to **SQL Editor** → paste the entire contents of `supabase/schema.sql` → click **Run**
+3. Go to **Project Settings → API** → copy:
+   - `Project URL`
+   - `anon / public` key
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 5. Configure Environment Variables
+```bash
+cp .env.example .env.local
+```
+Edit `.env.local`:
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_ANON_KEY
+```
 
-## Learn More
+### 6. Run Locally
+```bash
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000)
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Demo Mode Navigation
+The platform includes full **Demo Mode** — you can navigate all pages without signing in:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Page | URL |
+|------|-----|
+| Marketplace | `/` |
+| Product Detail | `/product/prod-1` |
+| Checkout | `/checkout?productId=prod-1&qty=1000` |
+| Seller Dashboard | `/seller-dashboard` |
+| Admin Panel | `/admin` |
+| Login | `/login` |
+| Signup | `/signup` |
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deployment to Vercel
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Option A — Vercel CLI
+```bash
+npm install -g vercel
+vercel
+# Follow prompts → add environment variables when asked
+```
+
+### Option B — Vercel Dashboard
+1. Push code to GitHub
+2. Go to [vercel.com](https://vercel.com) → **New Project** → Import your GitHub repo
+3. Add environment variables:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+4. Click **Deploy**
+
+---
+
+## Project Structure
+```
+ecopack/
+├── supabase/schema.sql      ← Run this in Supabase SQL Editor
+├── lib/
+│   ├── supabase.ts          ← Browser Supabase client
+│   ├── supabaseServer.ts    ← Server Supabase client
+│   ├── mockData.ts          ← Demo Mode data
+│   └── imageHelper.ts       ← Smart image fallback
+├── types/index.ts           ← TypeScript types
+├── components/
+│   ├── Navbar.tsx
+│   ├── Footer.tsx
+│   ├── ProductCard.tsx
+│   └── StatCard.tsx
+└── app/
+    ├── page.tsx             ← Marketplace Hub
+    ├── product/[id]/        ← Product Detail
+    ├── checkout/            ← Trade Checkout
+    ├── seller-dashboard/    ← Supplier Portal
+    ├── admin/               ← Admin Dashboard
+    ├── login/               ← Authentication
+    └── signup/              ← Registration
+```
+
+## License
+MIT

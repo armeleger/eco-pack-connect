@@ -1,201 +1,231 @@
+// app/page.tsx
+// ============================================================
+// MARKETPLACE HUB — Main product discovery page.
+//
+// Features:
+//   - Hero banner with platform stats
+//   - Sidebar category filter (desktop)
+//   - Real-time search + sort filtering
+//   - Product grid using ProductCard component
+//   - Empty state handling
+// ============================================================
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
-import { supabase } from "./lib/supabase";
+import { useState, useMemo, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import {
+  Search, Filter, Package, BadgeCheck,
+  TrendingUp, Shield, Leaf, ChevronRight
+} from "lucide-react";
+import { MOCK_PRODUCTS, MOCK_CATEGORIES } from "@/lib/mockData";
+import ProductCard from "@/components/ProductCard";
 
-export default function Home() {
-  const [products, setProducts] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
-  const [activeCategory, setActiveCategory] = useState("All Categories");
+// Wrapped in Suspense because useSearchParams requires it
+function MarketplaceContent() {
+  const searchParams = useSearchParams();
+  const [search,   setSearch]   = useState(searchParams.get("q") || "");
+  const [category, setCategory] = useState(searchParams.get("category") || "all");
+  const [sort,     setSort]     = useState<"featured"|"price_asc"|"price_desc"|"moq">("featured");
 
-  const categories = ["All Categories", "Corrugated Boxes", "Flexible Pouches", "Glass Bottles", "Eco-Plastics", "Custom Labels"];
-
+  // Keep state in sync when URL params change (e.g. clicking Navbar category links)
   useEffect(() => {
-    checkUser();
-    fetchProducts();
-  }, []);
+    setSearch(searchParams.get("q") || "");
+    setCategory(searchParams.get("category") || "all");
+  }, [searchParams]);
 
-  const checkUser = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) setUser(session.user);
-  };
+  /** Filtered and sorted product list — recalculates on any filter change */
+  const products = useMemo(() => {
+    let list = [...MOCK_PRODUCTS];
 
-  const fetchProducts = async () => {
-    setIsLoading(true);
-    const { data } = await supabase.from('products').select('*').order('created_at', { ascending: false });
-    if (data) setProducts(data);
-    setIsLoading(false);
-  };
+    // Category filter
+    if (category !== "all") {
+      const cat = MOCK_CATEGORIES.find((c) => c.slug === category);
+      if (cat) list = list.filter((p) => p.category_id === cat.id);
+    }
 
-  const filteredProducts = activeCategory === "All Categories" 
-    ? products 
-    : products.filter(p => p.category === activeCategory);
+    // Search filter — title, description, tags, supplier name, country
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((p) =>
+        p.title.toLowerCase().includes(q) ||
+        (p.description ?? "").toLowerCase().includes(q) ||
+        p.tags.some((t) => t.toLowerCase().includes(q)) ||
+        (p.supplier?.company_name ?? "").toLowerCase().includes(q) ||
+        (p.supplier?.country ?? "").toLowerCase().includes(q) ||
+        p.eco_certifications.some((c) => c.toLowerCase().includes(q))
+      );
+    }
+
+    // Sort
+    switch (sort) {
+      case "price_asc":  list.sort((a, b) => a.price_per_unit - b.price_per_unit); break;
+      case "price_desc": list.sort((a, b) => b.price_per_unit - a.price_per_unit); break;
+      case "moq":        list.sort((a, b) => a.moq - b.moq); break;
+      default:           list.sort((a, b) => Number(b.is_featured) - Number(a.is_featured));
+    }
+
+    return list;
+  }, [category, search, sort]);
+
+  const activeCategory = MOCK_CATEGORIES.find((c) => c.slug === category);
 
   return (
-    <div className="min-h-screen bg-[#f7f6f2] font-sans flex flex-col">
-      {/* Top Global Nav */}
-      <div className="bg-stone-900 text-stone-300 text-xs py-1.5 px-4">
-        <div className="max-w-[1400px] mx-auto flex justify-between">
-          <div className="flex gap-4">
-            <Link href="/" className="hover:text-white transition">EcoPack for Buyers</Link>
-            <Link href="/seller-dashboard" className="hover:text-white transition">EcoPack for Suppliers</Link>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+      {/* ── Hero Banner ── */}
+      <div className="relative bg-[#1B4332] rounded-3xl px-8 py-12 mb-10 overflow-hidden">
+        {/* Decorative leaf pattern */}
+        <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-5 flex items-center justify-end pr-8">
+          <Leaf size={200} className="text-white" />
+        </div>
+        <div className="relative z-10 max-w-2xl">
+          <div className="inline-flex items-center gap-2 bg-[#2D6A4F] text-[#95D5B2] text-xs font-semibold px-3 py-1.5 rounded-full mb-5">
+            <TrendingUp size={12} /> 318 verified suppliers across 20 African nations
           </div>
-          <div className="flex gap-4">
-            <a href="#" className="hover:text-white transition">Help Center</a>
-            <span className="text-stone-400">Ship to: 🇷🇼 Rwanda / 🇰🇪 Kenya</span>
+          <h1 className="text-4xl sm:text-5xl font-bold text-white leading-tight mb-4" style={{fontFamily:"var(--font-display)"}}>
+            Sustainable Packaging,<br />
+            <span className="text-[#95D5B2]">Sourced from Africa.</span>
+          </h1>
+          <p className="text-[#95D5B2]/80 text-base mb-8 leading-relaxed">
+            Compostable, biodegradable, and recycled packaging — direct from verified African manufacturers at wholesale prices.
+          </p>
+          <div className="flex flex-wrap items-center gap-5 text-sm text-white/70">
+            <span className="flex items-center gap-1.5"><Shield size={14} /> Trade Assurance</span>
+            <span className="flex items-center gap-1.5"><BadgeCheck size={14} /> Verified Suppliers</span>
+            <span className="flex items-center gap-1.5"><Package size={14} /> Bulk Ready</span>
+            <span className="flex items-center gap-1.5"><Leaf size={14} /> Eco Certified</span>
           </div>
         </div>
       </div>
 
-      {/* Main Search Nav */}
-      <nav className="bg-white border-b border-stone-200 sticky top-0 z-50">
-        <div className="max-w-[1400px] mx-auto px-4 py-5 flex items-center gap-8">
-          <Link href="/" className="shrink-0 flex items-center gap-2">
-            <div className="w-10 h-10 bg-[#8B8068] rounded flex items-center justify-center text-white font-black text-2xl">E</div>
-            <span className="font-extrabold text-2xl text-stone-900 tracking-tight">EcoPack</span>
-          </Link>
-          
-          <div className="flex-grow hidden md:flex">
-            <div className="flex w-full max-w-3xl border-2 border-[#8B8068] rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-[#D6D0C4] transition">
-              <select className="bg-stone-50 border-r border-stone-200 px-4 text-sm font-bold text-stone-600 outline-none cursor-pointer">
-                <option>Products</option>
-                <option>Suppliers</option>
-              </select>
-              <input type="text" placeholder="What packaging are you looking for..." className="w-full px-4 py-3 text-sm outline-none" />
-              <button className="bg-[#8B8068] hover:bg-[#736A56] text-white px-8 font-bold transition">Search</button>
-            </div>
-          </div>
+      <div className="flex flex-col lg:flex-row gap-8">
 
-          <div className="flex items-center gap-6 shrink-0">
-            {user ? (
-              <Link href="/profile" className="flex items-center gap-2 hover:text-[#8B8068] transition">
-                <div className="w-8 h-8 bg-[#F0ECE3] rounded-full flex items-center justify-center font-bold text-[#736A56]">
-                  {user.user_metadata?.company_name?.charAt(0) || "U"}
-                </div>
-                <div className="text-sm">
-                  <p className="text-stone-400 text-xs leading-none">Welcome back,</p>
-                  <p className="font-bold text-stone-900 leading-tight">{user.user_metadata?.company_name}</p>
-                </div>
-              </Link>
-            ) : (
-              <div className="flex items-center gap-3">
-                <Link href="/login" className="text-sm font-bold text-stone-600 hover:text-[#8B8068]">Sign In</Link>
-                <Link href="/signup" className="text-sm font-bold text-[#8B8068] border border-[#8B8068] px-4 py-1.5 rounded hover:bg-[#F0ECE3] transition">Join Free</Link>
-              </div>
-            )}
-            <Link href="/tracker" className="text-sm font-bold text-stone-600 hover:text-[#8B8068] flex flex-col items-center">
-              <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-              Track Orders
-            </Link>
-          </div>
-        </div>
-      </nav>
+        {/* ── Sidebar ── */}
+        <aside className="lg:w-56 flex-shrink-0">
+          <div className="bg-white rounded-2xl border border-stone-200 p-4 sticky top-24">
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-3 px-1">
+              Categories
+            </h2>
+            <nav className="space-y-0.5">
+              <button
+                onClick={() => setCategory("all")}
+                className={`w-full text-left flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition-colors ${
+                  category === "all"
+                    ? "bg-[#D8F3DC] text-[#1B4332] font-semibold"
+                    : "text-stone-600 hover:bg-stone-50 hover:text-[#2D6A4F]"
+                }`}
+              >
+                <span>All Products</span>
+                <span className="text-xs text-stone-400">{MOCK_PRODUCTS.length}</span>
+              </button>
+              {MOCK_CATEGORIES.map((cat) => {
+                const count = MOCK_PRODUCTS.filter((p) => p.category_id === cat.id).length;
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => setCategory(cat.slug)}
+                    className={`w-full text-left flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition-colors ${
+                      category === cat.slug
+                        ? "bg-[#D8F3DC] text-[#1B4332] font-semibold"
+                        : "text-stone-600 hover:bg-stone-50 hover:text-[#2D6A4F]"
+                    }`}
+                  >
+                    <span className="truncate pr-1">{cat.name}</span>
+                    {count > 0 && <span className="text-xs text-stone-400 flex-shrink-0">{count}</span>}
+                  </button>
+                );
+              })}
+            </nav>
 
-      <div className="max-w-[1400px] mx-auto px-4 py-6 flex gap-6 w-full flex-grow">
-        <aside className="hidden lg:block w-64 shrink-0">
-          <div className="bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden">
-            <div className="bg-[#F0ECE3] px-4 py-3 font-bold text-sm border-b border-stone-200 text-[#5A5343]">Packaging Categories</div>
-            <ul className="text-sm font-medium text-stone-600">
-              {categories.map((cat) => (
-                <li 
-                  key={cat} 
-                  onClick={() => setActiveCategory(cat)}
-                  className={`px-4 py-3 cursor-pointer transition ${activeCategory === cat ? 'bg-[#F0ECE3] text-[#736A56] font-bold border-l-4 border-[#8B8068]' : 'hover:bg-stone-50 hover:text-[#8B8068] border-l-4 border-transparent'}`}
-                >
-                  {cat}
-                </li>
+            {/* Trust badges */}
+            <div className="mt-6 pt-4 border-t border-stone-100 space-y-2">
+              {["Eco Certified Products", "Verified Suppliers", "Bulk Pricing", "Trade Assurance"].map((b) => (
+                <div key={b} className="flex items-center gap-2 text-xs text-stone-500">
+                  <Leaf size={11} className="text-[#2D6A4F] flex-shrink-0" /> {b}
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         </aside>
 
-        <main className="flex-grow min-w-0">
-          <div className="mb-6 flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-stone-200">
-            <h1 className="text-xl font-extrabold text-stone-900">{activeCategory} <span className="text-stone-400 font-medium text-sm ml-2">({filteredProducts.length} items)</span></h1>
-            <div className="flex gap-2 text-sm font-medium">
-              <button className="px-3 py-1.5 border border-stone-200 rounded hover:bg-stone-50">Verified Only</button>
+        {/* ── Main Content ── */}
+        <div className="flex-1 min-w-0">
+
+          {/* Search + Sort Bar */}
+          <div className="flex flex-col sm:flex-row gap-3 mb-5">
+            <div className="relative flex-1">
+              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search products, materials, certifications..."
+                className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] transition-all"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Filter size={14} className="text-stone-400 flex-shrink-0" />
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as typeof sort)}
+                className="text-sm bg-white border border-stone-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] cursor-pointer"
+              >
+                <option value="featured">Featured First</option>
+                <option value="price_asc">Price: Low → High</option>
+                <option value="price_desc">Price: High → Low</option>
+                <option value="moq">Lowest MOQ First</option>
+              </select>
             </div>
           </div>
 
-          {isLoading ? (
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-               {[1,2,3,4].map(n => <div key={n} className="h-96 bg-white animate-pulse rounded-xl border border-stone-200"></div>)}
-             </div>
-          ) : filteredProducts.length === 0 ? (
-             <div className="bg-white text-center py-20 rounded-xl border border-stone-200 text-stone-500 font-bold">No products found in this category.</div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredProducts.map((product) => (
-                <div key={product.id} className="bg-white rounded-xl shadow-sm border border-stone-200 flex flex-col group hover:shadow-lg transition-all overflow-hidden">
-                  <div className="h-48 relative bg-stone-100 p-2">
-                    <img src={product.image_url} alt={product.name} className="object-cover w-full h-full rounded-lg" />
-                    <span className="absolute top-4 right-4 bg-white/95 text-stone-800 px-2 py-0.5 rounded text-[10px] font-bold shadow-sm border border-stone-100">
-                      Lead Time: {product.lead_time_days || 7} days
-                    </span>
-                  </div>
-                  <div className="p-4 flex-grow flex flex-col">
-                    <h3 className="text-sm font-bold text-stone-900 mb-1 line-clamp-2 hover:text-[#8B8068] cursor-pointer">{product.name}</h3>
-                    
-                    <div className="mt-2 mb-4">
-                      <p className="text-xl font-black text-stone-900">{product.price} RWF <span className="text-[10px] font-normal text-stone-500">/ piece</span></p>
-                      <p className="text-xs font-bold text-stone-500 mt-1">MOQ: {product.moq || 500} pieces</p>
-                    </div>
+          {/* Results Header */}
+          <div className="flex items-center justify-between mb-5">
+            <p className="text-sm text-stone-500">
+              <span className="font-semibold text-stone-900">{products.length}</span> products
+              {activeCategory && (
+                <> in <span className="font-semibold text-[#2D6A4F]">{activeCategory.name}</span></>
+              )}
+            </p>
+            {category !== "all" && (
+              <button
+                onClick={() => setCategory("all")}
+                className="text-xs text-stone-400 hover:text-[#2D6A4F] flex items-center gap-1 transition-colors"
+              >
+                Clear filter <ChevronRight size={12} />
+              </button>
+            )}
+          </div>
 
-                    <div className="mt-auto pt-4 border-t border-stone-100">
-                      <div className="flex items-center gap-1.5 mb-3">
-                        <span className="w-3 h-3 rounded-full bg-[#A89F86]"></span>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-stone-600 line-clamp-1">{product.supplier}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <Link href={`/product/${product.id}`} className="flex-grow text-center bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold py-2 rounded text-xs transition">View Detail</Link>
-                        <button className="flex-grow bg-[#8B8068] hover:bg-[#736A56] text-white font-bold py-2 rounded text-xs transition shadow-sm">Contact</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+          {/* Product Grid */}
+          {products.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 stagger">
+              {products.map((p) => <ProductCard key={p.id} product={p} />)}
+            </div>
+          ) : (
+            <div className="text-center py-24">
+              <div className="w-16 h-16 bg-[#D8F3DC] rounded-full flex items-center justify-center mx-auto mb-4">
+                <Package size={28} className="text-[#2D6A4F]" />
+              </div>
+              <h3 className="font-semibold text-stone-900 mb-2" style={{fontFamily:"var(--font-display)"}}>No products found</h3>
+              <p className="text-sm text-stone-500 mb-4">Try adjusting your search or clearing the filter.</p>
+              <button
+                onClick={() => { setSearch(""); setCategory("all"); }}
+                className="text-sm font-medium text-[#2D6A4F] hover:underline"
+              >
+                Clear all filters
+              </button>
             </div>
           )}
-        </main>
+        </div>
       </div>
-
-      <footer className="bg-stone-900 text-stone-400 pt-16 pb-8 border-t border-stone-800 mt-auto">
-        <div className="max-w-[1400px] mx-auto px-4 grid grid-cols-1 md:grid-cols-4 gap-10 border-b border-stone-800 pb-12 mb-8">
-          <div className="col-span-1 md:col-span-2">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 bg-[#8B8068] rounded flex items-center justify-center text-white font-black text-lg">E</div>
-              <span className="font-extrabold text-xl text-white tracking-tight">EcoPack Connect</span>
-            </div>
-            <p className="text-sm font-medium leading-relaxed max-w-sm mb-6">
-              A Kira Capital venture dedicated to streamlining the sustainable packaging supply chain.
-            </p>
-            <div className="text-xs font-bold uppercase tracking-wider text-stone-500">
-              <p>HQ: Kigali Logistics Hub, Rwanda</p>
-            </div>
-          </div>
-          <div>
-            <h4 className="text-white font-bold mb-4">Platform</h4>
-            <ul className="space-y-2 text-sm">
-              <li><Link href="/" className="hover:text-[#D6D0C4] transition">Marketplace</Link></li>
-              <li><Link href="/seller-dashboard" className="hover:text-[#D6D0C4] transition">Supplier Portal</Link></li>
-              <li><Link href="/tracker" className="hover:text-[#D6D0C4] transition">Lifecycle Tracker</Link></li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="text-white font-bold mb-4">Legal & Support</h4>
-            <ul className="space-y-2 text-sm">
-              <li><a href="#" className="hover:text-[#D6D0C4] transition">Terms of Service</a></li>
-              <li><a href="#" className="hover:text-[#D6D0C4] transition">Privacy Policy</a></li>
-              <li><a href="#" className="hover:text-[#D6D0C4] transition">Supplier Verification</a></li>
-            </ul>
-          </div>
-        </div>
-        <div className="max-w-[1400px] mx-auto px-4 flex flex-col md:flex-row justify-between items-center text-xs font-medium">
-          <p>&copy; {new Date().getFullYear()} EcoPack Connect. All rights reserved.</p>
-        </div>
-      </footer>
     </div>
+  );
+}
+
+export default function MarketplacePage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-2 border-[#2D6A4F] border-t-transparent rounded-full animate-spin" /></div>}>
+      <MarketplaceContent />
+    </Suspense>
   );
 }
