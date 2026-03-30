@@ -1,16 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "../../lib/supabase";
-import { Leaf, ShoppingBag, LayoutDashboard, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { ShoppingBag, LayoutDashboard, ArrowLeft, CheckCircle2 } from "lucide-react";
 
-export default function Signup() {
+function SignupContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialRole = searchParams.get("role") === "supplier" ? "supplier" : "buyer";
-  const supabase = createClient();
 
   const [role, setRole] = useState<"buyer" | "supplier">(initialRole);
   const [isLoading, setIsLoading] = useState(false);
@@ -29,7 +28,7 @@ export default function Signup() {
     const fullName = formData.get("fullName") as string;
 
     // Supabase Authentication Logic
-    const { data, error } = await supabase.auth.signUp({
+    const { data, authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -37,15 +36,15 @@ export default function Signup() {
           full_name: fullName,
           company_name: companyName,
           user_role: role,
-          is_verified: role === "buyer" ? true : false, // Suppliers need manual verification
+          is_verified: role === "buyer", // Suppliers need manual verification
         },
       },
     });
 
     setIsLoading(false);
 
-    if (error) {
-      setError(error.message);
+    if (authError) {
+      setError(authError.message);
     } else if (data.user) {
       setSuccess(true);
       setTimeout(() => {
@@ -142,5 +141,14 @@ export default function Signup() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Wrapping the component in Suspense to fix the Vercel prerender error
+export default function Signup() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#F8FAF9] flex items-center justify-center font-bold text-[#2D6A4F]">Loading...</div>}>
+      <SignupContent />
+    </Suspense>
   );
 }
