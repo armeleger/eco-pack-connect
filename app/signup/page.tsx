@@ -1,322 +1,146 @@
-// app/signup/page.tsx
-// ============================================================
-// SIGNUP PAGE
-//
-// Handles:
-//   - Role selection (Buyer / Supplier) via URL param or toggle
-//   - Full Supabase auth registration
-//   - Auto-redirects based on role after signup
-//   - Supabase email confirmation handling
-//   - No emoji characters
-// ============================================================
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  Leaf, UserPlus, Eye, EyeOff, AlertCircle,
-  CheckCircle2, ArrowRight, ShoppingBag, Factory,
-  Info
-} from "lucide-react";
-import { signUp } from "@/lib/auth";
-import type { UserRole } from "@/types";
+import { createClient } from "../../lib/supabase";
+import { Leaf, ShoppingBag, LayoutDashboard, ArrowLeft, CheckCircle2 } from "lucide-react";
 
-function SignupContent() {
-  const router       = useRouter();
+export default function Signup() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const roleParam    = searchParams.get("role") as UserRole | null;
+  const initialRole = searchParams.get("role") === "supplier" ? "supplier" : "buyer";
+  const supabase = createClient();
 
-  const [role,     setRole]     = useState<UserRole>(roleParam === "supplier" ? "supplier" : "buyer");
-  const [name,     setName]     = useState("");
-  const [company,  setCompany]  = useState("");
-  const [email,    setEmail]    = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm,  setConfirm]  = useState("");
-  const [showPw,   setShowPw]   = useState(false);
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState<string | null>(null);
-  const [success,  setSuccess]  = useState(false);
-  const [needsConfirm, setNeedsConfirm] = useState(false);
+  const [role, setRole] = useState<"buyer" | "supplier">(initialRole);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
 
-  useEffect(() => {
-    if (roleParam === "supplier" || roleParam === "buyer") setRole(roleParam);
-  }, [roleParam]);
-
-  async function handleSignup(e: React.FormEvent) {
+  const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setError(null);
+    setIsLoading(true);
+    setError("");
 
-    // Client-side validation
-    if (!name.trim())    { setError("Please enter your full name."); return; }
-    if (role === "supplier" && !company.trim()) {
-      setError("Company name is required for supplier accounts."); return;
-    }
-    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
-    if (password !== confirm)  { setError("Passwords do not match."); return; }
+    const formData = new FormData(e.currentTarget);
+    const email = formData.get("email") as string;
+    const password = formData.get("password") as string;
+    const companyName = formData.get("companyName") as string;
+    const fullName = formData.get("fullName") as string;
 
-    setLoading(true);
-    const { user, error: authError } = await signUp(email, password, name, company, role);
+    // Supabase Authentication Logic
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+          company_name: companyName,
+          user_role: role,
+          is_verified: role === "buyer" ? true : false, // Suppliers need manual verification
+        },
+      },
+    });
 
-    if (authError || !user) {
-      setError(authError || "Registration failed. Please try again.");
-      setLoading(false);
-      return;
-    }
+    setIsLoading(false);
 
-    // Check if email confirmation is required
-    if (!user.confirmed_at && !user.email_confirmed_at) {
-      setNeedsConfirm(true);
-      setSuccess(true);
-    } else {
-      // Email confirmation disabled — go straight to dashboard
+    if (error) {
+      setError(error.message);
+    } else if (data.user) {
       setSuccess(true);
       setTimeout(() => {
-        router.push(role === "supplier" ? "/seller-dashboard" : "/");
-        router.refresh();
-      }, 1500);
+        if (role === "supplier") {
+          router.push("/seller-dashboard");
+        } else {
+          router.push("/");
+        }
+      }, 2000);
     }
-    setLoading(false);
-  }
+  };
 
-  // ── Success / Email Confirm Screen ───────────────────────
   if (success) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center px-4">
-        <div className="w-full max-w-md text-center animate-slide-up">
-          <div className="w-20 h-20 bg-[#D8F3DC] rounded-full flex items-center justify-center mx-auto mb-6">
-            <CheckCircle2 size={40} className="text-[#2D6A4F]" />
+      <div className="min-h-screen bg-[#F8FAF9] flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white p-10 rounded-3xl shadow-sm border border-stone-200 text-center animate-in zoom-in-95">
+          <div className="w-16 h-16 bg-[#D8F3DC] rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
+            <CheckCircle2 size={32} className="text-[#2D6A4F]" />
           </div>
-          <h2 className="text-2xl font-bold text-stone-900 mb-3" style={{fontFamily:"var(--font-display)"}}>
-            Account Created!
-          </h2>
-          {needsConfirm ? (
-            <>
-              <p className="text-stone-600 mb-2">
-                We sent a confirmation email to <strong>{email}</strong>.
-              </p>
-              <p className="text-sm text-stone-400 mb-6">
-                Click the link in the email to verify your account, then sign in.
-              </p>
-              <Link href="/login"
-                className="inline-flex items-center gap-2 bg-[#2D6A4F] text-white font-bold px-6 py-3.5 rounded-xl hover:bg-[#1B4332] transition-colors"
-              >
-                Go to Sign In <ArrowRight size={16} />
-              </Link>
-            </>
-          ) : (
-            <p className="text-stone-500 text-sm">
-              Redirecting you to your dashboard...
-            </p>
-          )}
+          <h2 className="text-2xl font-bold text-stone-900 mb-2" style={{fontFamily:"var(--font-display)"}}>Account Created!</h2>
+          <p className="text-stone-500 font-medium">Securing your B2B access...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md animate-slide-up">
-        <div className="bg-white rounded-3xl border border-stone-200 shadow-xl p-8">
+    <div className="min-h-screen bg-[#F8FAF9] flex items-center justify-center font-sans p-4 relative overflow-hidden">
+      {/* Decorative Background */}
+      <div className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] rounded-full bg-[#D8F3DC]/40 blur-[80px] -z-10 pointer-events-none"></div>
+      <div className="absolute bottom-[-10%] left-[-5%] w-[400px] h-[400px] rounded-full bg-[#95D5B2]/20 blur-[80px] -z-10 pointer-events-none"></div>
+      
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-lg border border-stone-200 p-8 sm:p-10 relative z-10">
+        <Link href="/" className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-stone-400 hover:text-[#2D6A4F] transition-colors mb-8">
+          <ArrowLeft size={14} /> Back to Hub
+        </Link>
 
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 mb-8 w-fit">
-            <div className="w-10 h-10 bg-[#2D6A4F] rounded-xl flex items-center justify-center">
-              <Leaf size={20} className="text-white" />
-            </div>
-            <span className="font-bold text-xl text-stone-900" style={{fontFamily:"var(--font-display)"}}>
-              Eco<span className="text-[#2D6A4F]">Pack</span>
-            </span>
-          </Link>
+        <div className="mb-8">
+          <h2 className="text-3xl font-bold text-stone-900 leading-tight" style={{fontFamily:"var(--font-display)"}}>
+            Join EcoPack
+          </h2>
+          <p className="text-stone-500 font-medium mt-1 text-sm">Create your B2B trade account.</p>
+        </div>
 
-          <h1 className="text-2xl font-bold text-stone-900 mb-1" style={{fontFamily:"var(--font-display)"}}>
-            Create your account
-          </h1>
-          <p className="text-sm text-stone-500 mb-6">
-            Join Africa&apos;s sustainable packaging marketplace
-          </p>
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-bold text-center">
+            {error}
+          </div>
+        )}
 
-          {/* Role Selector */}
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            {([
-              { value:"buyer",    label:"I am a Buyer",    icon:<ShoppingBag size={20}/>,  sub:"Source eco packaging" },
-              { value:"supplier", label:"I am a Supplier", icon:<Factory size={20}/>,      sub:"List and sell products" },
-            ] as { value: UserRole; label: string; icon: React.ReactNode; sub: string }[]).map((r) => (
-              <button
-                key={r.value}
-                type="button"
-                onClick={() => setRole(r.value)}
-                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all text-center ${
-                  role === r.value
-                    ? "border-[#2D6A4F] bg-[#D8F3DC]"
-                    : "border-stone-200 hover:border-stone-300 bg-white"
-                }`}
-              >
-                <div className={role === r.value ? "text-[#2D6A4F]" : "text-stone-400"}>
-                  {r.icon}
-                </div>
-                <div>
-                  <p className={`text-sm font-bold leading-none ${role === r.value ? "text-[#1B4332]" : "text-stone-700"}`}>
-                    {r.label}
-                  </p>
-                  <p className="text-[10px] text-stone-400 mt-0.5">{r.sub}</p>
-                </div>
-              </button>
-            ))}
+        {/* Role Selector */}
+        <div className="flex gap-3 mb-8 bg-[#F8FAF9] p-1.5 rounded-2xl border border-stone-200">
+          <button
+            type="button"
+            onClick={() => setRole("buyer")}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all ${role === "buyer" ? "bg-white text-[#2D6A4F] shadow-sm border border-stone-200" : "text-stone-500 hover:text-stone-700"}`}
+          >
+            <ShoppingBag size={16} /> Buyer
+          </button>
+          <button
+            type="button"
+            onClick={() => setRole("supplier")}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all ${role === "supplier" ? "bg-white text-[#2D6A4F] shadow-sm border border-stone-200" : "text-stone-500 hover:text-stone-700"}`}
+          >
+            <LayoutDashboard size={16} /> Supplier
+          </button>
+        </div>
+
+        <form onSubmit={handleSignup} className="space-y-4 text-sm">
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-1.5">Company Name</label>
+            <input type="text" name="companyName" required className="w-full px-4 py-3 bg-[#F8FAF9] border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#95D5B2] focus:border-[#2D6A4F] font-semibold text-stone-900 transition-all" placeholder="e.g. Kira Capital Ltd" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-1.5">Your Full Name</label>
+            <input type="text" name="fullName" required className="w-full px-4 py-3 bg-[#F8FAF9] border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#95D5B2] focus:border-[#2D6A4F] font-semibold text-stone-900 transition-all" placeholder="John Doe" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-1.5">Work Email</label>
+            <input type="email" name="email" required className="w-full px-4 py-3 bg-[#F8FAF9] border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#95D5B2] focus:border-[#2D6A4F] font-semibold text-stone-900 transition-all" placeholder="contact@company.com" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-1.5">Password</label>
+            <input type="password" name="password" required className="w-full px-4 py-3 bg-[#F8FAF9] border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#95D5B2] focus:border-[#2D6A4F] font-semibold text-stone-900 transition-all" placeholder="••••••••" />
           </div>
 
-          {/* Supplier info notice */}
-          {role === "supplier" && (
-            <div className="flex items-start gap-2 bg-[#D8F3DC] border border-[#2D6A4F]/20 px-4 py-3 rounded-xl mb-5 text-xs text-[#1B4332]">
-              <Info size={14} className="flex-shrink-0 mt-0.5 text-[#2D6A4F]" />
-              <span>
-                Supplier accounts get access to the Seller Dashboard to list products and manage inventory.
-                Accounts are verified within 24 hours of registration.
-              </span>
-            </div>
-          )}
+          <button type="submit" disabled={isLoading} className="w-full mt-4 bg-[#2D6A4F] text-white font-bold py-4 rounded-xl hover:bg-[#1B4332] transition-colors shadow-md disabled:bg-stone-300 text-sm flex items-center justify-center gap-2">
+            {isLoading ? "Creating Account..." : `Join as ${role === "buyer" ? "Buyer" : "Supplier"}`}
+          </button>
+        </form>
 
-          {/* Error */}
-          {error && (
-            <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl mb-4">
-              <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Form */}
-          <form onSubmit={handleSignup} className="space-y-4">
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-1.5">
-                Full Name
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                autoComplete="name"
-                placeholder="Your full name"
-                className="w-full px-4 py-3 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] transition-all"
-              />
-            </div>
-
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-1.5">
-                Company Name
-                {role === "supplier" && <span className="text-red-400 ml-1">*</span>}
-              </label>
-              <input
-                type="text"
-                value={company}
-                onChange={(e) => setCompany(e.target.value)}
-                autoComplete="organization"
-                placeholder={
-                  role === "supplier"
-                    ? "Your manufacturing / distribution company"
-                    : "Your company (optional)"
-                }
-                className="w-full px-4 py-3 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] transition-all"
-              />
-            </div>
-
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-1.5">
-                Email Address
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-                placeholder="you@company.com"
-                className="w-full px-4 py-3 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] transition-all"
-              />
-            </div>
-
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-1.5">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showPw ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete="new-password"
-                  placeholder="Min. 6 characters"
-                  className="w-full px-4 py-3 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] transition-all pr-11"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPw(!showPw)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
-                >
-                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-1.5">
-                Confirm Password
-              </label>
-              <input
-                type={showPw ? "text" : "password"}
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                required
-                autoComplete="new-password"
-                placeholder="Repeat your password"
-                className={`w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] transition-all ${
-                  confirm && confirm !== password
-                    ? "border-red-300 bg-red-50"
-                    : "border-stone-200"
-                }`}
-              />
-              {confirm && confirm !== password && (
-                <p className="text-xs text-red-500 mt-1">Passwords do not match</p>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-[#2D6A4F] hover:bg-[#1B4332] disabled:bg-stone-300 text-white font-bold py-3.5 rounded-xl transition-colors"
-            >
-              {loading ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>
-                  <UserPlus size={16} />
-                  Create {role === "supplier" ? "Supplier" : "Buyer"} Account
-                </>
-              )}
-            </button>
-          </form>
-
-          <p className="text-center text-sm text-stone-500 mt-6">
-            Already have an account?{" "}
-            <Link href="/login" className="text-[#2D6A4F] font-semibold hover:underline">
-              Sign in <ArrowRight size={12} className="inline" />
-            </Link>
-          </p>
+        <div className="mt-8 text-center text-xs font-semibold text-stone-500">
+          Already part of the network? <Link href="/login" className="text-[#2D6A4F] font-bold hover:underline">Sign In</Link>
         </div>
       </div>
     </div>
-  );
-}
-
-export default function SignupPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-[80vh] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[#2D6A4F] border-t-transparent rounded-full animate-spin" />
-      </div>
-    }>
-      <SignupContent />
-    </Suspense>
   );
 }

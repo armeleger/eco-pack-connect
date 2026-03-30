@@ -26,3 +26,5 @@ EcoPack Connect is a comprehensive B2B marketplace engineered to streamline the 
 1. Clone the repository:
    ```bash
    git clone [https://github.com/your-username/eco-pack-connect.git](https://github.com/your-username/eco-pack-connect.git)
+
+## By Kayisire Kira Armel

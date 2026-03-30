@@ -1,393 +1,263 @@
-// app/checkout/page.tsx
-// ============================================================
-// B2B TRADE CHECKOUT — Requires authentication (any role).
-// Middleware handles the redirect, but we also check client-side
-// as a fallback for graceful handling.
-// Currency: RWF throughout.
-// ============================================================
 "use client";
 
-import { useState, useMemo, useEffect, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import {
-  ArrowLeft, Shield, Lock, CheckCircle2, Package,
-  Truck, FileText, Leaf, ChevronRight, AlertCircle, LogIn
-} from "lucide-react";
-import { MOCK_PRODUCTS, getMockDiscountTiers, formatRWF } from "@/lib/mockData";
-import { getProductImage } from "@/lib/imageHelper";
-import { createClient } from "@/lib/supabase";
-
-type Form = {
-  company: string; contact: string; email: string; phone: string;
-  street:  string; city:    string; country: string; postal: string;
-  incoterm:string; notes:   string;
-};
-const BLANK: Form = {
-  company:"", contact:"", email:"", phone:"",
-  street:"", city:"", country:"Rwanda", postal:"",
-  incoterm:"FOB", notes:"",
-};
-const COUNTRIES = ["Rwanda","Kenya","Uganda","Tanzania","Burundi","Ethiopia","Ghana","Nigeria","South Africa","Egypt","Senegal","Other"];
-const INCOTERMS  = ["EXW","FOB","CIF","DDP","DAP","FCA","CPT"];
+import { useRouter, useSearchParams } from "next/navigation";
+import { ShieldCheck, Package, Lock, CheckCircle2, ArrowRight } from "lucide-react";
+import { MOCK_PRODUCTS } from "@/lib/mockData";
+import { supabase } from "../lib/supabase";
 
 function CheckoutContent() {
-  const sp      = useSearchParams();
-  const router  = useRouter();
-  const supabase = createClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const productId = searchParams.get("productId");
+  const initialQty = parseInt(searchParams.get("qty") || "0");
 
-  const productId = sp.get("productId") || "prod-1";
-  const initQty   = parseInt(sp.get("qty") || "0");
-  const product   = MOCK_PRODUCTS.find((p) => p.id === productId) ?? MOCK_PRODUCTS[0];
-  const tiers     = getMockDiscountTiers(product.id);
-  const img       = getProductImage(product.image_url, product.title, product.tags);
-
-  const [qty,       setQty]       = useState(Math.max(initQty, product.moq));
-  const [form,      setForm]      = useState<Form>(BLANK);
-  const [errors,    setErrors]    = useState<Partial<Form>>({});
-  const [submitted, setSubmitted] = useState(false);
-  const [loading,   setLoading]   = useState(false);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [isAuthed,    setIsAuthed]    = useState(false);
-
-  // Client-side auth check (middleware is primary, this is fallback)
+  const [user, setUser] = useState<any>(null);
+  const [product, setProduct] = useState<any>(null);
+  const [quantity, setQuantity] = useState<number>(0);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [receipt, setReceipt] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setIsAuthed(!!user);
-      setAuthChecked(true);
-    });
-  }, []);
+    const initCheckout = async () => {
+      // 1. Check Authentication Status
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) setUser(session.user);
 
-  const discount = useMemo(() => {
-    for (const t of [...tiers].reverse()) if (qty >= t.min_qty) return t.discount_pct;
-    return 0;
-  }, [qty, tiers]);
+      // 2. Load Product Details
+      if (productId) {
+        const found = MOCK_PRODUCTS.find(p => p.id === productId);
+        if (found) {
+          setProduct(found);
+          setQuantity(initialQty > found.moq ? initialQty : found.moq);
+        }
+      }
+      setIsLoading(false);
+    };
+    initCheckout();
+  }, [productId, initialQty]);
 
-  const unitPrice = product.price_per_unit * (1 - discount / 100);
-  const total     = unitPrice * qty;
-  const savings   = (product.price_per_unit - unitPrice) * qty;
+  const adjustQuantity = (amount: number) => {
+    if (!product) return;
+    const newQty = quantity + amount;
+    if (newQty >= product.moq && newQty <= product.stock_quantity) {
+      setQuantity(newQty);
+    }
+  };
 
-  function f(k: keyof Form, v: string) {
-    setForm((p) => ({ ...p, [k]: v }));
-    if (errors[k]) setErrors((p) => ({ ...p, [k]: undefined }));
-  }
-
-  function validate(): boolean {
-    const e: Partial<Form> = {};
-    if (!form.company.trim())      e.company = "Required";
-    if (!form.contact.trim())      e.contact = "Required";
-    if (!form.email.includes("@")) e.email   = "Valid email required";
-    if (!form.city.trim())         e.city    = "Required";
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  }
-
-  async function handleSubmit() {
-    if (!validate()) return;
-    setLoading(true);
-    // Simulate API submission
-    await new Promise((r) => setTimeout(r, 1800));
-    setLoading(false);
-    setSubmitted(true);
-  }
-
-  // Loading auth state
-  if (!authChecked) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-8 h-8 border-2 border-[#2D6A4F] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  // Not authenticated — show sign in prompt
-  if (!isAuthed) {
-    return (
-      <div className="max-w-lg mx-auto px-4 py-24 text-center">
-        <div className="w-16 h-16 bg-[#D8F3DC] rounded-full flex items-center justify-center mx-auto mb-6">
-          <Lock size={28} className="text-[#2D6A4F]" />
+  const NavBar = () => (
+    <nav className="bg-white border-b border-stone-200 sticky top-0 z-50 shadow-sm">
+      <div className="max-w-[1000px] mx-auto px-4 flex justify-between items-center h-16">
+        <div className="flex items-center gap-3">
+          <button onClick={() => router.back()} className="text-stone-400 hover:text-[#2D6A4F] transition-colors font-bold text-sm">
+            &larr; Back
+          </button>
         </div>
-        <h2 className="text-2xl font-bold text-stone-900 mb-3" style={{fontFamily:"var(--font-display)"}}>
-          Sign in to place your order
-        </h2>
-        <p className="text-stone-500 text-sm mb-8">
-          You need an EcoPack account to submit a trade order. It takes less than a minute to create one.
-        </p>
-        <div className="flex flex-col gap-3">
-          <Link
-            href={`/login?redirect=/checkout?productId=${productId}&qty=${qty}&role=buyer`}
-            className="flex items-center justify-center gap-2 bg-[#2D6A4F] hover:bg-[#1B4332] text-white font-bold py-3.5 rounded-xl transition-colors"
-          >
-            <LogIn size={16} /> Sign In to Continue
-          </Link>
-          <Link
-            href={`/signup?role=buyer&redirect=/checkout?productId=${productId}&qty=${qty}`}
-            className="flex items-center justify-center gap-2 border-2 border-[#2D6A4F] text-[#2D6A4F] hover:bg-[#D8F3DC] font-bold py-3.5 rounded-xl transition-colors"
-          >
-            Create a Free Account
-          </Link>
-          <Link href={`/product/${productId}`} className="text-sm text-stone-400 hover:text-stone-600 flex items-center justify-center gap-1 mt-1 transition-colors">
-            <ArrowLeft size={13} /> Back to product
-          </Link>
+        <div className="flex items-center gap-2">
+          <ShieldCheck size={16} className="text-[#2D6A4F]" />
+          <span className="text-sm font-bold text-stone-900" style={{fontFamily:"var(--font-display)"}}>Secure B2B Checkout</span>
+        </div>
+        <div className="text-[10px] font-bold bg-[#E8F5E9] text-[#1B4332] px-2.5 py-1 rounded-full uppercase tracking-widest border border-[#D8F3DC]">
+          SSL Encrypted
         </div>
       </div>
-    );
-  }
+    </nav>
+  );
 
-  // ── Success Screen ───────────────────────────────────────
-  if (submitted) {
-    const orderId = `EP-${Math.random().toString(36).substring(2,8).toUpperCase()}`;
+  if (isLoading) return <div className="min-h-screen bg-[#F8FAF9] flex items-center justify-center font-bold text-[#2D6A4F]">Securing Trade Tunnel...</div>;
+
+  // =========================================================================
+  // STRICT AUTHENTICATION LOCK
+  // If the user is not logged in, block checkout and show this screen
+  // =========================================================================
+  if (!user) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-24 text-center animate-fade-in">
-        <div className="w-20 h-20 bg-[#D8F3DC] rounded-full flex items-center justify-center mx-auto mb-6">
-          <CheckCircle2 size={40} className="text-[#2D6A4F]" />
-        </div>
-        <h1 className="text-3xl font-bold text-stone-900 mb-2" style={{fontFamily:"var(--font-display)"}}>
-          Order Submitted!
-        </h1>
-        <p className="text-stone-500 mb-2">Your trade order is now with the supplier.</p>
-        <p className="font-mono text-sm bg-stone-100 inline-block px-4 py-2 rounded-xl text-stone-700 mb-8">
-          Order ID: <strong>{orderId}</strong>
-        </p>
-        <div className="bg-white border border-stone-200 rounded-2xl p-6 text-left mb-8 space-y-3">
-          <h3 className="font-semibold text-stone-900 mb-2">What happens next?</h3>
-          {[
-            "Supplier confirms availability within 24 hours",
-            "Pro-forma invoice sent to your email in RWF",
-            "Production begins on deposit receipt",
-            `Shipment ready in ${product.lead_time_days} business days`,
-            "EcoPack trade assurance active until delivery",
-          ].map((s, i) => (
-            <div key={i} className="flex items-center gap-3 text-sm text-stone-600">
-              <div className="w-6 h-6 rounded-full bg-[#2D6A4F] text-white text-xs flex items-center justify-center font-bold flex-shrink-0">
-                {i + 1}
-              </div>
-              {s}
+      <div className="min-h-screen bg-[#F8FAF9] flex flex-col">
+        <NavBar />
+        <div className="flex-grow flex items-center justify-center p-4 relative overflow-hidden">
+          <div className="absolute top-[-10%] right-[-5%] w-[300px] h-[300px] rounded-full bg-[#D8F3DC]/40 blur-[80px] -z-10 pointer-events-none"></div>
+          
+          <div className="max-w-md w-full bg-white p-8 sm:p-10 rounded-3xl shadow-lg border border-stone-200 text-center relative z-10">
+            <div className="w-16 h-16 bg-[#F8FAF9] rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm border border-stone-100">
+              <Lock size={28} className="text-[#2D6A4F]" />
             </div>
-          ))}
+            <h2 className="text-2xl font-bold text-stone-900 mb-2" style={{fontFamily:"var(--font-display)"}}>B2B Auth Required</h2>
+            <p className="text-stone-500 font-medium mb-8 text-sm">You must be logged into a registered company account to place wholesale trade orders.</p>
+            <div className="space-y-3">
+              <Link href="/login" className="block w-full bg-[#2D6A4F] text-white font-bold py-4 rounded-xl hover:bg-[#1B4332] transition-colors shadow-sm text-sm">
+                Secure Sign In
+              </Link>
+              <Link href="/signup" className="block w-full bg-white border-2 border-stone-200 text-stone-600 hover:border-[#2D6A4F] hover:text-[#2D6A4F] font-bold py-3.5 rounded-xl transition-colors text-sm">
+                Apply for an Account
+              </Link>
+            </div>
+          </div>
         </div>
-        <Link href="/" className="inline-flex items-center gap-2 bg-[#2D6A4F] text-white font-bold px-6 py-3.5 rounded-xl hover:bg-[#1B4332] transition-colors">
-          Continue Shopping <ChevronRight size={16} />
-        </Link>
       </div>
     );
   }
 
-  // ── Checkout Form ────────────────────────────────────────
+  if (!product) return <div className="min-h-screen bg-[#F8FAF9] flex items-center justify-center font-bold">No product selected. <Link href="/" className="text-[#4A7C59] ml-2 hover:underline">Return to Market.</Link></div>;
+
+  const subtotal = product.price_per_unit * quantity;
+  const discountAmount = quantity >= (product.moq * 2) ? (subtotal * 0.05) : 0; 
+  const finalTotal = subtotal - discountAmount;
+
+  const handlePayment = () => {
+    setIsProcessing(true);
+    setTimeout(() => {
+      const newOrder = {
+        orderId: `TRD-${Math.floor(Math.random() * 900000 + 100000)}`,
+        trackId: `ECO-${Math.floor(Math.random() * 900000 + 100000)}`,
+        product: product.title,
+        quantity,
+        total: finalTotal,
+        date: new Date().toLocaleDateString(),
+      };
+      setReceipt(newOrder);
+      setIsProcessing(false);
+    }, 1500);
+  };
+
+  if (receipt) {
+    return (
+      <div className="min-h-screen bg-[#F8FAF9] flex flex-col">
+        <NavBar />
+        <main className="flex-grow pt-12 px-4 pb-20">
+          <div className="max-w-xl mx-auto bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+            <div className="bg-[#1B4332] p-10 text-center relative overflow-hidden">
+              <div className="absolute -right-10 -top-10 w-40 h-40 bg-[#2D6A4F] rounded-full blur-3xl opacity-50"></div>
+              <div className="w-16 h-16 bg-[#D8F3DC] rounded-full flex items-center justify-center mx-auto mb-5 relative z-10 shadow-lg">
+                <CheckCircle2 size={32} className="text-[#1B4332]" />
+              </div>
+              <h2 className="text-3xl font-bold text-white mb-2 relative z-10" style={{fontFamily:"var(--font-display)"}}>Order Authorized</h2>
+              <p className="text-[#95D5B2] text-sm font-medium relative z-10">Commercial invoice generated and sent to supplier.</p>
+            </div>
+            <div className="p-8 sm:p-10">
+              <h3 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest border-b border-stone-100 pb-3 mb-6">Trade Details</h3>
+              <div className="space-y-4 mb-8 text-sm text-stone-600">
+                <div className="flex justify-between"><span className="text-stone-500 font-medium">Buyer</span> <span className="text-stone-900 font-bold">{user.user_metadata?.company_name}</span></div>
+                <div className="flex justify-between"><span className="text-stone-500 font-medium">Order Reference</span> <span className="text-stone-900 font-bold bg-stone-100 px-2 py-0.5 rounded">{receipt.orderId}</span></div>
+                <div className="flex justify-between"><span className="text-stone-500 font-medium">Logistics Tracking</span> <span className="text-[#2D6A4F] font-bold bg-[#D8F3DC] px-2 py-0.5 rounded">{receipt.trackId}</span></div>
+                <div className="flex justify-between"><span className="text-stone-500 font-medium">Commodity</span> <span className="text-stone-900 font-semibold text-right max-w-[200px] truncate">{receipt.product}</span></div>
+                <div className="flex justify-between items-center pt-4 border-t border-stone-100"><span className="text-stone-500 font-medium">Total Volume</span> <span className="text-stone-900 font-bold">{receipt.quantity.toLocaleString()} units</span></div>
+                <div className="flex justify-between items-center bg-[#F8FAF9] p-4 rounded-xl border border-stone-200 mt-4">
+                  <span className="text-stone-900 font-bold uppercase tracking-wide text-xs">Total Settled</span> 
+                  <span className="text-xl font-bold text-[#2D6A4F]" style={{fontFamily:"var(--font-display)"}}>{receipt.total.toLocaleString()} RWF</span>
+                </div>
+              </div>
+              <Link href="/" className="flex items-center justify-center gap-2 w-full bg-[#2D6A4F] text-white font-bold py-4 rounded-xl hover:bg-[#1B4332] transition-colors shadow-sm text-sm">
+                Return to Marketplace <ArrowRight size={16} />
+              </Link>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-stone-400 mb-6 flex-wrap">
-        <Link href="/" className="hover:text-[#2D6A4F] flex items-center gap-1 transition-colors">
-          <ArrowLeft size={14} /> Marketplace
-        </Link>
-        <ChevronRight size={13} />
-        <Link href={`/product/${product.id}`} className="hover:text-[#2D6A4F] truncate max-w-xs transition-colors">
-          {product.title}
-        </Link>
-        <ChevronRight size={13} />
-        <span className="text-stone-700 font-medium">Checkout</span>
-      </div>
-
-      {/* Security Banner */}
-      <div className="flex items-center gap-3 bg-[#D8F3DC] border border-[#2D6A4F]/20 rounded-xl px-4 py-3 mb-8">
-        <Lock size={15} className="text-[#2D6A4F] flex-shrink-0" />
-        <p className="text-xs text-stone-700">
-          <span className="font-bold text-[#1B4332]">Secure Trade Order</span> — Funds held in escrow until delivery confirmation. All prices in Rwandan Franc (RWF).
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-        {/* ── Left: Form ── */}
-        <div className="lg:col-span-2 space-y-6">
-
-          {/* Volume */}
-          <div className="bg-white rounded-2xl border border-stone-200 p-6">
-            <h2 className="font-bold text-stone-900 text-lg mb-5 flex items-center gap-2" style={{fontFamily:"var(--font-display)"}}>
-              <Package size={18} className="text-[#2D6A4F]" /> Order Volume
-            </h2>
-            <div className="mb-5">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-2">Quantity (units)</label>
-              <input
-                type="number" value={qty} min={product.moq}
-                onChange={(e) => setQty(Math.max(product.moq, parseInt(e.target.value) || product.moq))}
-                className="w-full px-4 py-3.5 border border-stone-200 rounded-xl text-lg font-bold focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] transition-all"
-              />
-              <p className="text-xs text-stone-400 mt-1">Minimum: {product.moq.toLocaleString()} units</p>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {tiers.map((tier) => {
-                const active = qty >= tier.min_qty && (tier.max_qty === null || qty <= tier.max_qty);
-                return (
-                  <button key={tier.id} onClick={() => setQty(tier.min_qty)}
-                    className={`p-3 rounded-xl border text-center transition-all ${active ? "border-[#2D6A4F] bg-[#D8F3DC]" : "border-stone-200 hover:border-[#2D6A4F]/40 bg-stone-50"}`}
-                  >
-                    <p className="text-xs text-stone-500 mb-0.5">
-                      {tier.max_qty ? `${tier.min_qty.toLocaleString()}–${tier.max_qty.toLocaleString()}` : `${tier.min_qty.toLocaleString()}+`}
-                    </p>
-                    <p className={`text-sm font-bold ${active ? "text-[#1B4332]" : "text-stone-700"}`}>
-                      {tier.discount_pct > 0 ? `-${tier.discount_pct}%` : "Base"}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Shipping */}
-          <div className="bg-white rounded-2xl border border-stone-200 p-6">
-            <h2 className="font-bold text-stone-900 text-lg mb-5 flex items-center gap-2" style={{fontFamily:"var(--font-display)"}}>
-              <Truck size={18} className="text-[#2D6A4F]" /> Shipping Destination
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-              <div className="sm:col-span-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-1.5">Company Name *</label>
-                <input type="text" value={form.company} onChange={(e) => f("company", e.target.value)} placeholder="Your company name"
-                  className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] transition-all ${errors.company ? "border-red-300 bg-red-50" : "border-stone-200"}`}
-                />
-                {errors.company && <p className="text-xs text-red-500 mt-1">{errors.company}</p>}
+    <div className="min-h-screen bg-[#F8FAF9] flex flex-col">
+      <NavBar />
+      <main className="max-w-[1000px] mx-auto px-4 pt-10 pb-20 w-full flex-grow">
+        <div className="grid lg:grid-cols-5 gap-8">
+          <div className="lg:col-span-3 space-y-6">
+            <h1 className="text-2xl font-bold text-stone-900 mb-2" style={{fontFamily:"var(--font-display)"}}>Review & Confirm Order</h1>
+            
+            {/* Product Summary */}
+            <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6 flex flex-col sm:flex-row gap-5 items-start sm:items-center">
+              <div className="w-20 h-20 rounded-xl bg-stone-100 border border-stone-200 overflow-hidden shrink-0">
+                 <img src={product.image_url || "https://images.unsplash.com/photo-1530968831187-a937baadb39b?w=800&q=80"} alt={product.title} className="w-full h-full object-cover" />
               </div>
-
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-1.5">Contact Person *</label>
-                <input type="text" value={form.contact} onChange={(e) => f("contact", e.target.value)} placeholder="Full name"
-                  className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] transition-all ${errors.contact ? "border-red-300 bg-red-50" : "border-stone-200"}`}
-                />
-                {errors.contact && <p className="text-xs text-red-500 mt-1">{errors.contact}</p>}
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-1.5">Email Address *</label>
-                <input type="email" value={form.email} onChange={(e) => f("email", e.target.value)} placeholder="trade@company.com"
-                  className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] transition-all ${errors.email ? "border-red-300 bg-red-50" : "border-stone-200"}`}
-                />
-                {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email}</p>}
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-1.5">Phone</label>
-                <input type="tel" value={form.phone} onChange={(e) => f("phone", e.target.value)} placeholder="+250 788 000 000"
-                  className="w-full px-4 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-1.5">City *</label>
-                <input type="text" value={form.city} onChange={(e) => f("city", e.target.value)} placeholder="Kigali"
-                  className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] transition-all ${errors.city ? "border-red-300 bg-red-50" : "border-stone-200"}`}
-                />
-                {errors.city && <p className="text-xs text-red-500 mt-1">{errors.city}</p>}
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-1.5">Country</label>
-                <select value={form.country} onChange={(e) => f("country", e.target.value)}
-                  className="w-full px-4 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] bg-white transition-all"
-                >
-                  {COUNTRIES.map((c) => <option key={c}>{c}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-1.5">Incoterm</label>
-                <select value={form.incoterm} onChange={(e) => f("incoterm", e.target.value)}
-                  className="w-full px-4 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] bg-white transition-all"
-                >
-                  {INCOTERMS.map((t) => <option key={t}>{t}</option>)}
-                </select>
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block mb-1.5">Special Instructions</label>
-                <textarea rows={3} value={form.notes} onChange={(e) => f("notes", e.target.value)}
-                  placeholder="Custom printing, certifications required, special packaging..."
-                  className="w-full px-4 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D6A4F] resize-none transition-all"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 text-xs text-stone-400 px-1">
-            <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
-            <p>
-              By submitting, you agree to EcoPack&apos;s{" "}
-              <Link href="#" className="text-[#2D6A4F] underline">Terms of Service</Link>{" "}
-              and Trade Order Policy. A pro-forma invoice in RWF will be emailed within 24 hours.
-            </p>
-          </div>
-        </div>
-
-        {/* ── Right: Summary ── */}
-        <div>
-          <div className="bg-white rounded-2xl border border-stone-200 p-5 sticky top-24">
-            <h3 className="font-bold text-stone-900 mb-4 flex items-center gap-2" style={{fontFamily:"var(--font-display)"}}>
-              <FileText size={16} className="text-[#2D6A4F]" /> Order Summary
-            </h3>
-
-            <div className="flex gap-3 mb-5 pb-5 border-b border-stone-100">
-              <div className="w-16 h-16 rounded-xl overflow-hidden bg-[#D8F3DC] flex-shrink-0">
-                <img src={img} alt={product.title} className="w-full h-full object-cover" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-stone-900 leading-snug line-clamp-2">{product.title}</p>
-                <p className="text-xs text-stone-400 mt-1">{product.supplier?.company_name}</p>
-              </div>
-            </div>
-
-            <div className="space-y-2 text-sm mb-5">
-              <div className="flex justify-between text-stone-600">
-                <span>Unit price</span>
-                <span>{formatRWF(unitPrice)}</span>
-              </div>
-              <div className="flex justify-between text-stone-600">
-                <span>Quantity</span>
-                <span>{qty.toLocaleString()} units</span>
-              </div>
-              {savings > 0 && (
-                <div className="flex justify-between text-[#2D6A4F] font-semibold">
-                  <span>Volume discount ({discount}%)</span>
-                  <span>-{formatRWF(savings)}</span>
+              <div className="flex-grow">
+                <span className="text-[10px] text-stone-400 font-bold uppercase tracking-widest block mb-1">{product.supplier?.company_name}</span>
+                <h3 className="font-bold text-stone-900 text-lg leading-tight mb-2 line-clamp-1">{product.title}</h3>
+                <div className="flex gap-4 text-sm font-medium text-stone-500">
+                  <p>Unit Price: <span className="font-bold text-stone-900">{product.price_per_unit.toLocaleString()} RWF</span></p>
                 </div>
-              )}
-              <div className="flex justify-between font-bold text-stone-900 border-t border-stone-200 pt-2 mt-1">
-                <span>Total</span>
-                <span>{formatRWF(total)}</span>
               </div>
             </div>
 
-            <p className="text-xs text-stone-400 mb-5">
-              Excludes shipping, customs, and taxes. Final amount on pro-forma invoice.
-            </p>
-
-            <button onClick={handleSubmit} disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-[#2D6A4F] hover:bg-[#1B4332] disabled:bg-stone-300 text-white font-bold py-4 rounded-xl transition-colors"
-            >
-              {loading
-                ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                : <><Shield size={16} /> Submit Trade Order</>
-              }
-            </button>
-
-            <div className="mt-4 space-y-1.5">
-              {["Trade Assurance protection active","Verified eco supplier","Escrow payment security"].map((t) => (
-                <div key={t} className="flex items-center gap-2 text-xs text-stone-400">
-                  <Leaf size={10} className="text-[#2D6A4F]" /> {t}
+            {/* Volume Editor */}
+            <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6">
+              <h4 className="font-bold text-stone-900 text-base mb-4 flex items-center gap-2"><Package size={16} className="text-[#2D6A4F]"/> Order Volume</h4>
+              <div className="flex flex-col sm:flex-row gap-4 items-center mb-4">
+                <div className="flex items-center w-full sm:w-auto bg-[#F8FAF9] border border-stone-200 rounded-xl p-1">
+                  <button onClick={() => setQuantity(Math.max(product.moq, quantity - 500))} className="w-12 h-12 flex items-center justify-center text-stone-600 font-bold hover:bg-stone-200 rounded-lg transition-colors">-</button>
+                  <input 
+                    type="number" min={product.moq} 
+                    value={quantity} onChange={(e) => setQuantity(Math.max(product.moq, Number(e.target.value)))} 
+                    className="w-24 sm:w-32 text-center h-12 bg-transparent font-bold text-xl text-stone-900 outline-none" 
+                  />
+                  <button onClick={() => setQuantity(quantity + 500)} className="w-12 h-12 flex items-center justify-center text-stone-600 font-bold hover:bg-stone-200 rounded-lg transition-colors">+</button>
                 </div>
-              ))}
+                <div className="text-xs text-stone-500">
+                  <p className="font-bold text-stone-900 mb-0.5">Minimum Order: {product.moq.toLocaleString()}</p>
+                  <p>Double the MOQ for a 5% bulk discount.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Trade Summary */}
+          <div className="lg:col-span-2">
+            <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden sticky top-24">
+              <div className="bg-[#1B4332] p-5">
+                <h3 className="font-bold text-white text-base flex items-center gap-2" style={{fontFamily:"var(--font-display)"}}>
+                  <Lock size={16} className="text-[#95D5B2]"/> Trade Summary
+                </h3>
+              </div>
+              <div className="p-6">
+                <div className="space-y-4 mb-6">
+                  <div className="flex justify-between text-sm text-stone-600 font-medium">
+                    <span>Commodity Subtotal</span>
+                    <span className="font-semibold text-stone-900">{subtotal.toLocaleString()} RWF</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-stone-600 font-medium">
+                    <span>Logistics (EAC)</span>
+                    <span className="text-stone-400 italic">Calculated post-auth</span>
+                  </div>
+                  {discountAmount > 0 && (
+                    <div className="flex justify-between text-sm font-bold text-[#2D6A4F] bg-[#E8F5E9] p-3 rounded-xl border border-[#D8F3DC]">
+                      <span>Volume Discount</span>
+                      <span>- {discountAmount.toLocaleString()} RWF</span>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="pt-6 border-t border-stone-100 mb-6">
+                  <div className="flex justify-between items-end mb-1">
+                    <span className="text-xs font-bold text-stone-400 uppercase tracking-widest">Total Due</span>
+                    <span className="text-3xl font-bold text-stone-900" style={{fontFamily:"var(--font-display)"}}>{finalTotal.toLocaleString()}</span>
+                  </div>
+                  <div className="text-right text-sm font-bold text-stone-400">RWF</div>
+                </div>
+                
+                <button 
+                  disabled={isProcessing} 
+                  onClick={handlePayment} 
+                  className="w-full bg-[#2D6A4F] text-white font-bold py-4 rounded-xl hover:bg-[#1B4332] shadow-sm transition-colors disabled:bg-stone-300 disabled:cursor-not-allowed text-sm flex justify-center items-center gap-2"
+                >
+                  {isProcessing ? "Authorizing Trade..." : "Authorize Payment"}
+                  {!isProcessing && <ArrowRight size={16} />}
+                </button>
+                <div className="flex items-center justify-center gap-1.5 mt-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                  <ShieldCheck size={12} /> Protected by EcoPack for {user.user_metadata?.company_name}
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
 
 export default function CheckoutPage() {
   return (
-    <Suspense fallback={<div className="flex justify-center py-20"><div className="w-8 h-8 border-2 border-[#2D6A4F] border-t-transparent rounded-full animate-spin"/></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-[#F8FAF9] flex items-center justify-center font-bold text-[#2D6A4F]">Loading Checkout...</div>}>
       <CheckoutContent />
     </Suspense>
   );

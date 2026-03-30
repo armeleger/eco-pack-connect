@@ -1,92 +1,110 @@
 // lib/imageHelper.ts
 // ============================================================
 // Smart image fallback engine.
-// Each keyword maps to a carefully curated Unsplash photo
-// that visually matches the actual eco-packaging product.
+// Now uses local files from /public/images/products/
+// Falls back through keyword matching if image_url is missing.
 // ============================================================
 
 /**
- * Keyword → curated Unsplash URL.
- * Photos are selected to look premium and realistic —
- * matching the actual physical product as closely as possible.
+ * Keyword → local image path map.
+ * All paths are relative to /public/ so Next.js serves them
+ * automatically at the root URL.
  */
 const KEYWORD_IMAGE_MAP: [string, string][] = [
-  // Kraft paper bags / food pouches
-  ["kraft",        "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=800&q=80"],
-  ["bag",          "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=800&q=80"],
-  ["pouch",        "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=800&q=80"],
-  ["coffee",       "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=800&q=80"],
+  // Bags & Pouches
+  ["bag",          "/images/products/Bags & Pouches.webp"],
+  ["pouch",        "/images/products/Bags & Pouches.webp"],
+  ["kraft",        "/images/products/Bags & Pouches.webp"],
+  ["coffee",       "/images/products/Bags & Pouches.webp"],
+  ["compostable",  "/images/products/Bags & Pouches.webp"],
 
-  // Corrugated boxes / shipping cartons
-  ["box",          "https://images.unsplash.com/photo-1610348725531-843dff563e2c?w=800&q=80"],
-  ["carton",       "https://images.unsplash.com/photo-1610348725531-843dff563e2c?w=800&q=80"],
-  ["corrugated",   "https://images.unsplash.com/photo-1610348725531-843dff563e2c?w=800&q=80"],
-  ["mailer",       "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80"],
-  ["ecommerce",    "https://images.unsplash.com/photo-1610348725531-843dff563e2c?w=800&q=80"],
+  // Boxes & Cartons
+  ["box",          "/images/products/Boxes & Cartons.jpg"],
+  ["carton",       "/images/products/Boxes & Cartons.jpg"],
+  ["corrugated",   "/images/products/Boxes & Cartons.jpg"],
+  ["mailer",       "/images/products/Boxes & Cartons.jpg"],
+  ["ecommerce",    "/images/products/Boxes & Cartons.jpg"],
+  ["shipping",     "/images/products/Boxes & Cartons.jpg"],
 
-  // Bamboo / natural containers
-  ["bamboo",       "https://images.unsplash.com/photo-1610611424854-5e07871481ca?w=800&q=80"],
-  ["container",    "https://images.unsplash.com/photo-1610611424854-5e07871481ca?w=800&q=80"],
-  ["bottle",       "https://images.unsplash.com/photo-1610611424854-5e07871481ca?w=800&q=80"],
+  // Bottles & Containers
+  ["bottle",       "/images/products/Bottles & Containers.jpg"],
+  ["container",    "/images/products/Bottles & Containers.jpg"],
+  ["bamboo",       "/images/products/Bottles & Containers.jpg"],
+  ["jar",          "/images/products/Bottles & Containers.jpg"],
+  ["lid",          "/images/products/Bottles & Containers.jpg"],
 
-  // Jute / burlap agricultural sacks
-  ["jute",         "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800&q=80"],
-  ["sack",         "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800&q=80"],
-  ["sisal",        "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800&q=80"],
-  ["burlap",       "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800&q=80"],
-  ["grain",        "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800&q=80"],
-  ["agricultural", "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800&q=80"],
+  // Wrapping & Labels
+  ["wrap",         "/images/products/Wrapping & Labels.jpg"],
+  ["paper",        "/images/products/Wrapping & Labels.jpg"],
+  ["roll",         "/images/products/Wrapping & Labels.jpg"],
+  ["label",        "/images/products/Wrapping & Labels.jpg"],
+  ["tissue",       "/images/products/Wrapping & Labels.jpg"],
+  ["sticker",      "/images/products/Wrapping & Labels.jpg"],
 
-  // Bagasse / compostable food trays
-  ["bagasse",      "https://images.unsplash.com/photo-1585664811087-47f65abbad64?w=800&q=80"],
-  ["tray",         "https://images.unsplash.com/photo-1585664811087-47f65abbad64?w=800&q=80"],
-  ["catering",     "https://images.unsplash.com/photo-1585664811087-47f65abbad64?w=800&q=80"],
-  ["sugarcane",    "https://images.unsplash.com/photo-1585664811087-47f65abbad64?w=800&q=80"],
-  ["food",         "https://images.unsplash.com/photo-1585664811087-47f65abbad64?w=800&q=80"],
+  // Industrial Sacks
+  ["sack",         "/images/products/Industrial Sacks.avif"],
+  ["jute",         "/images/products/Industrial Sacks.avif"],
+  ["sisal",        "/images/products/Industrial Sacks.avif"],
+  ["burlap",       "/images/products/Industrial Sacks.avif"],
+  ["grain",        "/images/products/Industrial Sacks.avif"],
+  ["agricultural", "/images/products/Industrial Sacks.avif"],
+  ["industrial",   "/images/products/Industrial Sacks.avif"],
 
-  // Kraft wrapping paper rolls
-  ["wrap",         "https://images.unsplash.com/photo-1607344645866-009c320b63e0?w=800&q=80"],
-  ["paper",        "https://images.unsplash.com/photo-1607344645866-009c320b63e0?w=800&q=80"],
-  ["roll",         "https://images.unsplash.com/photo-1607344645866-009c320b63e0?w=800&q=80"],
-  ["label",        "https://images.unsplash.com/photo-1607344645866-009c320b63e0?w=800&q=80"],
+  // Food Packaging
+  ["food",         "/images/products/Food Packaging.webp"],
+  ["tray",         "/images/products/Food Packaging.webp"],
+  ["bagasse",      "/images/products/Food Packaging.webp"],
+  ["sugarcane",    "/images/products/Food Packaging.webp"],
+  ["catering",     "/images/products/Food Packaging.webp"],
+  ["takeaway",     "/images/products/Food Packaging.webp"],
+  ["meal",         "/images/products/Food Packaging.webp"],
 
-  // Honeycomb paper protective packaging
-  ["honeycomb",    "https://images.unsplash.com/photo-1609709295948-17d77cb2a69b?w=800&q=80"],
-  ["cushion",      "https://images.unsplash.com/photo-1609709295948-17d77cb2a69b?w=800&q=80"],
-  ["protective",   "https://images.unsplash.com/photo-1609709295948-17d77cb2a69b?w=800&q=80"],
-  ["fragile",      "https://images.unsplash.com/photo-1609709295948-17d77cb2a69b?w=800&q=80"],
+  // Protective Packaging
+  ["honeycomb",    "/images/products/Protective Packaging.png"],
+  ["protective",   "/images/products/Protective Packaging.png"],
+  ["cushion",      "/images/products/Protective Packaging.png"],
+  ["fragile",      "/images/products/Protective Packaging.png"],
+  ["bubble",       "/images/products/Protective Packaging.png"],
+  ["foam",         "/images/products/Protective Packaging.png"],
 
-  // Custom printed branded mailer bags
-  ["custom",       "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80"],
-  ["branded",      "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80"],
-  ["dtc",          "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80"],
-  ["print",        "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80"],
+  // Custom & Branded
+  ["custom",       "/images/products/Custom & Branded.webp"],
+  ["branded",      "/images/products/Custom & Branded.webp"],
+  ["print",        "/images/products/Custom & Branded.webp"],
+  ["dtc",          "/images/products/Custom & Branded.webp"],
+  ["brand",        "/images/products/Custom & Branded.webp"],
+  ["logo",         "/images/products/Custom & Branded.webp"],
 ];
 
-const DEFAULT_FALLBACK =
-  "https://images.unsplash.com/photo-1530968831187-a937baadb39b?w=800&q=80";
+/** Absolute fallback — uses Bags & Pouches as default */
+const DEFAULT_FALLBACK = "/images/products/Bags & Pouches.webp";
 
 /**
  * getProductImage
  *
  * Returns the best available image for a product.
- * Priority: stored URL → keyword match → default fallback.
+ * Priority:
+ *   1. Stored image_url (your local path)
+ *   2. Keyword match from title + tags
+ *   3. Default fallback
  *
- * @param imageUrl 
- * @param title    
- * @param tags     
+ * @param imageUrl - Stored image URL (may be null/empty)
+ * @param title    - Product title for keyword extraction
+ * @param tags     - Product tags for additional matching
  */
 export function getProductImage(
   imageUrl: string | null | undefined,
   title: string,
   tags: string[] = []
 ): string {
+  // Use stored URL if available
   if (imageUrl && imageUrl.trim().length > 0) return imageUrl;
 
+  // Search title + tags for keyword match
   const search = [title, ...tags].join(" ").toLowerCase();
 
-  for (const [keyword, url] of KEYWORD_IMAGE_MAP) {
-    if (search.includes(keyword)) return url;
+  for (const [keyword, path] of KEYWORD_IMAGE_MAP) {
+    if (search.includes(keyword)) return path;
   }
 
   return DEFAULT_FALLBACK;
