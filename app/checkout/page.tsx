@@ -229,7 +229,7 @@ function CheckoutContent() {
                 
                 <div className="pt-6 border-t border-stone-100 mb-6">
                   <div className="flex justify-between items-end mb-1">
-                    <span className="text-xs font-bold text-stone-400 uppercase tracking-widest">Total Due</span>
+                    <span className="text-xs font-bold text-stone-400 uppercase tracking-widest">TOTAL DUE</span>
                     <span className="text-3xl font-bold text-stone-900" style={{fontFamily:"var(--font-display)"}}>{finalTotal.toLocaleString()}</span>
                   </div>
                   <div className="text-right text-sm font-bold text-stone-400">RWF</div>
