@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ShieldCheck, Package, Lock, CheckCircle2, ArrowRight } from "lucide-react";
 import { MOCK_PRODUCTS } from "@/lib/mockData";
-import { supabase } from "../lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 function CheckoutContent() {
   const router = useRouter();

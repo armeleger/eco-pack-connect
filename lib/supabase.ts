@@ -11,3 +11,6 @@ export function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 }
+
+// Export a default supabase instance for convenience
+export const supabase = createClient();
